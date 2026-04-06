@@ -38,13 +38,15 @@ NUMBER_RE = re.compile(r"\d")
 MULTISPACE_RE = re.compile(r"\s+")
 MEASURABLE_WORD_RE = re.compile(r"\b(facility|facilities|plant|plants|site|sites)\b")
 MIN_SENTENCE_WORDS = 6
+SENTENCE_LINE_SPLIT_RE = re.compile(r"[.\n]+")
 
 
 def _normalize_text(text: str) -> str:
-    # Remove leading bullet markers before line-break normalization.
-    normalized = BULLET_PREFIX_RE.sub("", text)
-    normalized = re.sub(r"\n+", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.replace("•", "\n")
+    normalized = BULLET_PREFIX_RE.sub("", normalized)
+    normalized = re.sub(r"\n{2,}", "\n", normalized)
+    normalized = re.sub(r"[ \t]+", " ", normalized)
     return normalized.strip()
 
 
@@ -56,7 +58,7 @@ def _split_sentences(text: str) -> list[str]:
     if not normalized:
         return []
 
-    return [part.strip() for part in SENTENCE_SPLIT_RE.split(normalized) if part.strip()]
+    return [part.strip() for part in SENTENCE_LINE_SPLIT_RE.split(normalized) if part.strip()]
 
 
 def _clean_sentence(sentence: str) -> str:

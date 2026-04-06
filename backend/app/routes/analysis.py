@@ -1,22 +1,37 @@
 from pathlib import Path
+import re
 import sys
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import AnalyzeRequest, AnalyzeTextPreviewResponse, ClaimItem
+from app.models.schemas import AnalyzeRequest, AnalyzeClaimsResponse, ScoredClaimItem
 from app.services.pdf_service import extract_text_from_pdf
+from app.services.scoring_service import calculate_cps
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from ai.claim_extraction.extractor import extract_claims
+from ai.agents.regulatory_agent import check_regulatory_issues
 
 router = APIRouter(tags=["analysis"])
 
 
-@router.post("/analyze", response_model=AnalyzeTextPreviewResponse)
-def analyze(request: AnalyzeRequest) -> AnalyzeTextPreviewResponse:
+def _extract_company_name(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if lines:
+        return lines[0]
+
+    match = re.search(r"([A-Z][A-Za-z0-9&.,\-\s]{2,})", text)
+    if match:
+        return match.group(1).strip()
+
+    return "Unknown Company"
+
+
+@router.post("/analyze", response_model=AnalyzeClaimsResponse)
+def analyze(request: AnalyzeRequest) -> AnalyzeClaimsResponse:
     pdf_path = Path(request.file_path)
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="File path does not exist")
@@ -30,5 +45,19 @@ def analyze(request: AnalyzeRequest) -> AnalyzeTextPreviewResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    claims = [ClaimItem(**item) for item in extract_claims(extracted_text)]
-    return AnalyzeTextPreviewResponse(text_preview=extracted_text[:1000], claims=claims)
+    claims = extract_claims(extracted_text)
+    company_name = _extract_company_name(extracted_text)
+    regulatory_result = check_regulatory_issues(company_name)
+
+    claims_output: list[ScoredClaimItem] = []
+    for c in claims:
+        scored = calculate_cps(c["claim"])
+        claims_output.append(
+            ScoredClaimItem(
+                **scored,
+                evidence=regulatory_result["status"],
+                source="Regulatory Agent",
+            )
+        )
+
+    return AnalyzeClaimsResponse(claims=claims_output)

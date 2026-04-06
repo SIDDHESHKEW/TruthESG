@@ -19,11 +19,13 @@ class AnalyzeResponse(BaseModel):
     risk: str
 
 
-class ClaimItem(BaseModel):
+class ScoredClaimItem(BaseModel):
     claim: str
-    type: str
+    cps_score: float
+    risk: str
+    evidence: str
+    source: str
 
 
-class AnalyzeTextPreviewResponse(BaseModel):
-    text_preview: str
-    claims: list[ClaimItem]
+class AnalyzeClaimsResponse(BaseModel):
+    claims: list[ScoredClaimItem]
