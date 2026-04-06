@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import settings
@@ -26,3 +26,13 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"message": "TruthESG Backend is running", "docs": "/docs"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return Response(status_code=204)
