@@ -17,3 +17,7 @@ class AnalyzeResponse(BaseModel):
     claims: list[str]
     score: float
     risk: str
+
+
+class AnalyzeTextPreviewResponse(BaseModel):
+    text_preview: str
