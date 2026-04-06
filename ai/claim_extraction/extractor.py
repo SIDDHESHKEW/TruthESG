@@ -33,49 +33,30 @@ VAGUE_WORDS = [
 IGNORE_KEYWORDS = ["invoice", "invoices", "personal data", "payment info"]
 
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
-LINE_SPLIT_RE = re.compile(r"\n+")
-BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*•●◦▪‣►]|(?:\d+|[a-zA-Z])[.)])\s+")
+BULLET_PREFIX_RE = re.compile(r"(?m)^\s*(?:[-*•●◦▪‣►]|(?:\d+|[a-zA-Z])[.)])\s+")
 NUMBER_RE = re.compile(r"\d")
 MULTISPACE_RE = re.compile(r"\s+")
 MEASURABLE_WORD_RE = re.compile(r"\b(facility|facilities|plant|plants|site|sites)\b")
 MIN_SENTENCE_WORDS = 6
 
 
+def _normalize_text(text: str) -> str:
+    # Remove leading bullet markers before line-break normalization.
+    normalized = BULLET_PREFIX_RE.sub("", text)
+    normalized = re.sub(r"\n+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
 def _split_sentences(text: str) -> list[str]:
     if not text.strip():
         return []
 
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    merged_lines: list[str] = []
-    pending_line = ""
+    normalized = _normalize_text(text)
+    if not normalized:
+        return []
 
-    for raw_line in LINE_SPLIT_RE.split(normalized):
-        line = BULLET_PREFIX_RE.sub("", raw_line).strip()
-        if not line:
-            continue
-
-        if pending_line:
-            pending_line = f"{pending_line} {line}".strip()
-        else:
-            pending_line = line
-
-        if pending_line.endswith((".", "!", "?")):
-            merged_lines.append(pending_line)
-            pending_line = ""
-
-    if pending_line:
-        merged_lines.append(pending_line)
-
-    sentences: list[str] = []
-
-    for line in merged_lines:
-        parts = SENTENCE_SPLIT_RE.split(line)
-        for part in parts:
-            cleaned = part.strip()
-            if cleaned:
-                sentences.append(cleaned)
-
-    return sentences
+    return [part.strip() for part in SENTENCE_SPLIT_RE.split(normalized) if part.strip()]
 
 
 def _clean_sentence(sentence: str) -> str:
