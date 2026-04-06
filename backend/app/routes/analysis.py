@@ -1,9 +1,16 @@
 from pathlib import Path
+import sys
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import AnalyzeRequest, AnalyzeTextPreviewResponse
+from app.models.schemas import AnalyzeRequest, AnalyzeTextPreviewResponse, ClaimItem
 from app.services.pdf_service import extract_text_from_pdf
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from ai.claim_extraction.extractor import extract_claims
 
 router = APIRouter(tags=["analysis"])
 
@@ -23,4 +30,5 @@ def analyze(request: AnalyzeRequest) -> AnalyzeTextPreviewResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return AnalyzeTextPreviewResponse(text_preview=extracted_text[:1000])
+    claims = [ClaimItem(**item) for item in extract_claims(extracted_text)]
+    return AnalyzeTextPreviewResponse(text_preview=extracted_text[:1000], claims=claims)

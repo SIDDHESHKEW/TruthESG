@@ -19,5 +19,11 @@ class AnalyzeResponse(BaseModel):
     risk: str
 
 
+class ClaimItem(BaseModel):
+    claim: str
+    type: str
+
+
 class AnalyzeTextPreviewResponse(BaseModel):
     text_preview: str
+    claims: list[ClaimItem]

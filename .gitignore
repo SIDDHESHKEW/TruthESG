@@ -14,16 +14,21 @@ Thumbs.db
 
 # Python
 __pycache__/
+ai/**/__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 *.so
 .pytest_cache/
+ai/.pytest_cache/
 .mypy_cache/
+ai/.mypy_cache/
 .ruff_cache/
 .coverage
 .coverage.*
 htmlcov/
+nltk_data/
+ai/nltk_data/
 
 # Virtual environments
 .venv/
