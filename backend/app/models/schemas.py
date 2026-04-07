@@ -30,5 +30,12 @@ class ScoredClaimItem(BaseModel):
     source: str | None = None
 
 
+class FinalClaimItem(BaseModel):
+    claim: str
+    final_score: float
+    final_risk: str
+    reason: str
+
+
 class AnalyzeClaimsResponse(BaseModel):
-    claims: list[ScoredClaimItem]
+    claims: list[FinalClaimItem]

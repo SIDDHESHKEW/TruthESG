@@ -4,7 +4,7 @@ import sys
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import AnalyzeRequest, AnalyzeClaimsResponse, ScoredClaimItem
+from app.models.schemas import AnalyzeRequest, AnalyzeClaimsResponse, FinalClaimItem
 from app.services.pdf_service import extract_text_from_pdf
 from app.services.scoring_service import calculate_cps
 
@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from ai.claim_extraction.extractor import extract_claims
 from ai.agents.regulatory_agent import check_regulatory_issues
 from ai.agents.news_agent import check_news_issues
+from ai.agents.judge_agent import evaluate_claim
 
 router = APIRouter(tags=["analysis"])
 
@@ -50,18 +51,27 @@ def analyze(request: AnalyzeRequest) -> AnalyzeClaimsResponse:
     company_name = _extract_company_name(extracted_text)
     regulatory_result = check_regulatory_issues(company_name)
 
-    claims_output: list[ScoredClaimItem] = []
+    claims_output: list[FinalClaimItem] = []
     for c in claims:
         scored = calculate_cps(c["claim"])
         news_result = check_news_issues(company_name, c["claim"])
+
+        full_claim_data = {
+            "claim": c["claim"],
+            "cps_score": scored["cps_score"],
+            "risk": scored["risk"],
+            "regulatory_evidence": regulatory_result["status"],
+            "news_evidence": news_result["status"],
+            "news_confidence": news_result["confidence"],
+        }
+        judge_result = evaluate_claim(full_claim_data)
+
         claims_output.append(
-            ScoredClaimItem(
-                **scored,
-                regulatory_evidence=regulatory_result["status"],
-                news_evidence=news_result["status"],
-                news_confidence=news_result["confidence"],
-                evidence=regulatory_result["status"],
-                source="Regulatory + News Agents",
+            FinalClaimItem(
+                claim=judge_result["claim"],
+                final_score=judge_result["final_score"],
+                final_risk=judge_result["final_risk"],
+                reason=judge_result["reason"],
             )
         )
 
