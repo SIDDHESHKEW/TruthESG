@@ -43,6 +43,13 @@ dist/
 # Frontend dependencies
 node_modules/
 frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/.cache/
+frontend/*.tsbuildinfo
+frontend/.eslintcache
+frontend/*.local
 
 # Runtime uploads
 uploads/

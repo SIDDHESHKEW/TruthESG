@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;700;800&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #5e0006;
+    color: #eed9b9;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-image:
+      radial-gradient(circle at 18% 20%, rgba(213, 62, 15, 0.14), transparent 40%),
+      radial-gradient(circle at 80% 85%, rgba(155, 15, 6, 0.2), transparent 45%),
+      linear-gradient(160deg, #5e0006 0%, #120102 56%, #000000 100%);
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.08;
+    background-image: radial-gradient(rgba(238, 217, 185, 0.25) 0.4px, transparent 0.4px);
+    background-size: 3px 3px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
