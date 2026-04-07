@@ -20,10 +20,14 @@ def evaluate_claim(claim_data: dict) -> dict:
     else:
         reasons.append("Weak or vague claim")
 
-    if "no major violations" in regulatory_evidence.lower():
+    reg_text = regulatory_evidence.lower().strip()
+
+    if "no major violations" in reg_text:
         reasons.append("no regulatory issues found")
-    else:
+    elif "violation" in reg_text or "penalty" in reg_text or "fine" in reg_text:
         reasons.append("regulatory concerns detected")
+    else:
+        reasons.append("no clear regulatory signals")
 
     if news_confidence > 0.6:
         reasons.append("negative news signals present")
