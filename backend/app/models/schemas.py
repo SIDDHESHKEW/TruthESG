@@ -26,7 +26,6 @@ class ScoredClaimItem(BaseModel):
     regulatory_evidence: str
     news_evidence: str
     news_confidence: float
-    evidence: str | None = None
     source: str | None = None
 
 

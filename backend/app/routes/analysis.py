@@ -59,7 +59,6 @@ def analyze(request: AnalyzeRequest) -> AnalyzeClaimsResponse:
         full_claim_data = {
             "claim": c["claim"],
             "cps_score": scored["cps_score"],
-            "risk": scored["risk"],
             "regulatory_evidence": regulatory_result["status"],
             "news_evidence": news_result["status"],
             "news_confidence": news_result["confidence"],
