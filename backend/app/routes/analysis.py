@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from ai.claim_extraction.extractor import extract_claims
 from ai.agents.regulatory_agent import check_regulatory_issues
+from ai.agents.news_agent import check_news_issues
 
 router = APIRouter(tags=["analysis"])
 
@@ -52,11 +53,15 @@ def analyze(request: AnalyzeRequest) -> AnalyzeClaimsResponse:
     claims_output: list[ScoredClaimItem] = []
     for c in claims:
         scored = calculate_cps(c["claim"])
+        news_result = check_news_issues(company_name, c["claim"])
         claims_output.append(
             ScoredClaimItem(
                 **scored,
+                regulatory_evidence=regulatory_result["status"],
+                news_evidence=news_result["status"],
+                news_confidence=news_result["confidence"],
                 evidence=regulatory_result["status"],
-                source="Regulatory Agent",
+                source="Regulatory + News Agents",
             )
         )
 

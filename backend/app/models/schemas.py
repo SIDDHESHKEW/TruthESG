@@ -23,8 +23,11 @@ class ScoredClaimItem(BaseModel):
     claim: str
     cps_score: float
     risk: str
-    evidence: str
-    source: str
+    regulatory_evidence: str
+    news_evidence: str
+    news_confidence: float
+    evidence: str | None = None
+    source: str | None = None
 
 
 class AnalyzeClaimsResponse(BaseModel):
