@@ -1,0 +1,412 @@
+TruthESG - Full Project Analysis (AI Handoff)
+Generated: 2026-04-10
+
+IMPORTANT SCOPE NOTE
+- This document describes project-owned source/config/docs files.
+- It intentionally excludes dependency/vendor/build/runtime-cache folders such as node_modules, .venv, __pycache__, and dist.
+
+==================================================
+1) PROJECT OVERVIEW
+==================================================
+TruthESG is a React + FastAPI application for ESG report checking.
+Core user journey:
+1. User uploads a PDF ESG report (or searches a company name for a mock PDF).
+2. Backend extracts text from PDF.
+3. Backend identifies ESG-like claims.
+4. Backend scores each claim as Verified / Questionable / High Risk.
+5. Frontend renders verdict cards, scores, and reasons.
+
+Current production pipeline is heuristic/rule-based.
+There is a separate ai/ module containing agent-like logic that is not integrated into backend routes yet.
+
+==================================================
+2) ARCHITECTURE SUMMARY
+==================================================
+Frontend
+- Stack: React 19 + TypeScript + Vite + Tailwind plugin.
+- Main app file: frontend/src/App.tsx.
+- Sends multipart form-data POST requests to backend /analyze.
+- Hardcoded backend base URL in code: http://localhost:8000.
+
+Backend
+- Stack: FastAPI + Pydantic + PyMuPDF.
+- Entry point: backend/app/main.py.
+- Router modules: health, upload, analysis.
+- Claim extraction and scoring happen inside backend/app/services/.
+- Uploaded files saved under backend/uploads/ with UUID-prefixed names.
+
+AI module (currently not wired into API path)
+- ai/agents/*.py and ai/claim_extraction/extractor.py contain additional scoring/extraction logic.
+- No backend route currently imports/calls these modules.
+
+==================================================
+3) BACKEND ENDPOINT CATALOG (DETAILED)
+==================================================
+A) GET /health
+- File: backend/app/routes/health.py
+- Handler: health_check()
+- Purpose: service liveness check.
+- Request body: none.
+- Response model: HealthResponse
+  {
+    "status": "ok"
+  }
+- Typical status code: 200.
+- Side effects: none.
+
+B) POST /upload-pdf
+- File: backend/app/routes/upload.py
+- Handler: upload_pdf(file: UploadFile)
+- Content-Type expected: multipart/form-data
+- Required field: file (UploadFile)
+- Validation:
+  - Rejects when file.content_type != "application/pdf".
+  - Returns HTTP 400 with detail "Only PDF files are allowed".
+- Processing:
+  - Calls store_pdf(...) in backend/app/services/pdf_service.py.
+  - store_pdf calls save_uploaded_file(...) in backend/app/utils/file_handler.py.
+  - Saves to backend/uploads/{uuid}_{original_filename}.
+- Response model: UploadPDFResponse
+  {
+    "file_path": "<absolute path to saved file>"
+  }
+- Status codes:
+  - 200 success
+  - 400 invalid MIME type
+
+C) POST /analyze
+- File: backend/app/routes/analysis.py
+- Handler: analyze(file: UploadFile)
+- Content-Type expected: multipart/form-data
+- Required field: file (UploadFile)
+- Validation:
+  - Rejects non-PDF MIME type with HTTP 400.
+- Pipeline:
+  1) Save uploaded PDF to backend/uploads via store_pdf(...)
+  2) Extract and process claims via process_pdf(file_path)
+     - extract_text_from_pdf(...) using PyMuPDF
+     - split_text(...) into ~2000-char chunks with boundary heuristics
+     - extract_claims_from_chunk(...) with keyword/percent matching
+     - deduplicate claims
+  3) Score each claim via score_claim(claim)
+  4) Return normalized list of FinalClaimItem
+- Response model: AnalyzeClaimsResponse
+  {
+    "claims": [
+      {
+        "claim": "...",
+        "final_score": 0.75,
+        "final_risk": "Verified",
+        "reason": "Strong measurable claim with specific data"
+      }
+    ]
+  }
+- Error mapping:
+  - FileNotFoundError -> HTTP 404
+  - ValueError -> HTTP 400
+  - RuntimeError -> HTTP 500
+
+D) GET /
+- File: backend/app/main.py
+- Handler: root()
+- Purpose: base status/info endpoint.
+- Response:
+  {
+    "message": "TruthESG Backend is running",
+    "docs": "/docs"
+  }
+- Status code: 200.
+
+E) GET /favicon.ico (not in OpenAPI schema)
+- File: backend/app/main.py
+- Handler: favicon()
+- Purpose: avoid favicon 404 noise.
+- Response: empty body, status 204.
+
+==================================================
+4) SCORING + CLAIM EXTRACTION LOGIC
+==================================================
+Claim Extraction (backend/app/services/pdf_service.py)
+- extract_text_from_pdf(file_path)
+  - Uses fitz.open(...) from PyMuPDF.
+  - Concatenates page text in order.
+  - Throws:
+    - FileNotFoundError if file missing
+    - ValueError for empty PDF or no extractable text
+    - RuntimeError for extraction failure
+
+- split_text(text, chunk_size=2000)
+  - Splits large text into chunks.
+  - Tries to split near newline or sentence punctuation boundaries.
+
+- extract_claims_from_chunk(chunk)
+  - Splits into sentences.
+  - Keeps sentence if either:
+    - contains "%"
+    - OR contains one of: reduced, increased, achieved, improved, decreased
+  - Deduplicates case-insensitively.
+
+- process_pdf(file_path)
+  - Full orchestrator: extract -> split -> claims -> dedupe -> return list[str].
+
+Scoring (backend/app/services/scoring_service.py)
+- Baseline score = 0.5
+- Positive signals:
+  - +0.1 if claim contains "%"
+  - +0.1 if contains any number
+  - +0.1 if contains action word (reduced/decreased/achieved/implemented)
+  - +0.15 if contains verification word (audited/certified/verified)
+- Negative signals:
+  - -0.15 if contains intent words (aim/target/plan/commit)
+  - -0.1 if contains marketing words (leading/best/sustainable/eco-friendly)
+  - -0.1 if contains "will" or regex "by 2030"
+- Final clamp: [0.0, 1.0], rounded to 2 decimals.
+- Risk label mapping:
+  - >= 0.75 => Verified
+  - >= 0.45 => Questionable
+  - < 0.45 => High Risk
+- Reason text generated from risk bucket.
+
+Note: calculate_cps(...) also exists in this file but is not used by current routes.
+
+==================================================
+5) FRONTEND FLOW DETAILS
+==================================================
+Main orchestration: frontend/src/App.tsx
+
+Direct upload flow
+1. User picks PDF in UploadCard.
+2. onFileSelect(file) accepts only application/pdf.
+3. handleAnalyze() creates FormData and POSTs to http://localhost:8000/analyze.
+4. While processing, AnalysisLoadingOverlay is displayed.
+5. Response claims are shown in dashboard cards.
+
+Company search flow
+1. CompanySearchBar collects text query.
+2. getCompanyPDF(query) maps names to mock PDF path.
+3. App fetches that PDF as blob.
+4. Blob is submitted to /analyze exactly like uploaded file.
+
+Derived UI analytics in App.tsx
+- avgScore = mean(final_score across claims)
+- overallRisk thresholds mirror backend buckets.
+- confidencePercent = round((1 - avgScore) * 100)
+- verdict and key insight strings depend on avgScore and questionable-count.
+
+==================================================
+6) INTEGRATION AND CONFIG
+==================================================
+Backend settings (backend/app/config/settings.py)
+- app_name: "TruthESG Backend"
+- api_prefix: "" (no prefix)
+- uploads_dir: backend/uploads
+- CORS: allow all origins/methods/headers by default
+- .env is supported via pydantic-settings BaseSettings
+
+Backend dependencies (backend/requirements.txt)
+- fastapi==0.115.0
+- uvicorn[standard]==0.30.6
+- python-multipart==0.0.9
+- pydantic==2.9.2
+- pydantic-settings==2.5.2
+- PyMuPDF==1.24.10
+
+Frontend scripts (frontend/package.json)
+- npm run dev
+- npm run build
+- npm run lint
+- npm run preview
+
+Root package.json
+- Contains utility UI dependencies only:
+  - clsx
+  - lucide-react
+  - tailwind-merge
+
+==================================================
+7) FILE INVENTORY WITH PURPOSE (PROJECT FILES)
+==================================================
+
+ROOT
+- README.md
+  - Very brief project statement and ESG meaning.
+- package.json
+  - Root-level dependencies (clsx, lucide-react, tailwind-merge).
+- package-lock.json
+  - Root npm lockfile.
+
+AI MODULE
+- ai/__init__.py
+  - Package marker.
+- ai/agents/__init__.py
+  - Package marker.
+- ai/agents/judge_agent.py
+  - evaluate_claim(...) combines CPS + regulatory/news hints into final risk.
+  - Not currently called by backend routes.
+- ai/agents/news_agent.py
+  - check_news_issues(...) stub heuristic for negative news confidence.
+  - Not currently called by backend routes.
+- ai/agents/regulatory_agent.py
+  - check_regulatory_issues(...) stub for possible violations.
+  - Not currently called by backend routes.
+- ai/claim_extraction/__init__.py
+  - Package marker.
+- ai/claim_extraction/extractor.py
+  - Advanced ESG claim extraction helper.
+  - Not currently called by backend routes.
+
+BACKEND
+- backend/README.md
+  - Backend structure, run commands, endpoint list.
+- backend/requirements.txt
+  - Python dependencies.
+- backend/app/__init__.py
+  - Package marker.
+- backend/app/main.py
+  - FastAPI app creation, CORS middleware, router registration, / and /favicon.ico handlers.
+
+Backend config
+- backend/app/config/__init__.py
+  - Package marker.
+- backend/app/config/settings.py
+  - Pydantic settings, CORS config, upload directory creation.
+
+Backend models
+- backend/app/models/__init__.py
+  - Package marker.
+- backend/app/models/schemas.py
+  - Pydantic models used by routes; includes some currently unused schemas.
+
+Backend routes
+- backend/app/routes/__init__.py
+  - Package marker.
+- backend/app/routes/health.py
+  - /health endpoint.
+- backend/app/routes/upload.py
+  - /upload-pdf endpoint.
+- backend/app/routes/analysis.py
+  - /analyze endpoint.
+
+Backend services
+- backend/app/services/__init__.py
+  - Package marker.
+- backend/app/services/pdf_service.py
+  - PDF storage, extraction, chunking, claim extraction orchestration.
+- backend/app/services/scoring_service.py
+  - Rule-based score/risk generation.
+
+Backend utils
+- backend/app/utils/__init__.py
+  - Package marker.
+- backend/app/utils/file_handler.py
+  - save_uploaded_file helper.
+
+Runtime data folder
+- backend/uploads/
+  - Runtime output folder for saved PDFs (dynamic content).
+
+FRONTEND
+- frontend/README.md
+  - Default Vite React template documentation.
+- frontend/package.json
+  - Frontend dependencies and scripts.
+- frontend/package-lock.json
+  - Frontend npm lockfile.
+- frontend/index.html
+  - HTML entry point with root mount.
+- frontend/vite.config.ts
+  - Vite config with React + Tailwind plugin.
+- frontend/eslint.config.js
+  - ESLint setup for TS/React.
+- frontend/tsconfig.json
+  - Base TS project references.
+- frontend/tsconfig.app.json
+  - App TS compiler options.
+- frontend/tsconfig.node.json
+  - Node/tooling TS compiler options.
+- frontend/.gitignore
+  - Frontend ignore patterns.
+
+Frontend public assets
+- frontend/public/robots.txt
+  - Robots file.
+- frontend/public/favicon.svg
+  - Browser tab icon.
+- frontend/public/icons.svg
+  - SVG icon asset.
+- frontend/public/mock-data/Tata.pdf
+  - Only currently available mock PDF for company-search path.
+
+Frontend source
+- frontend/src/main.tsx
+  - React root render bootstrap.
+- frontend/src/index.css
+  - Global styles + font imports.
+- frontend/src/App.tsx
+  - Main app logic: upload, search, analyze request, result rendering.
+- frontend/src/App.css
+  - Legacy/demo stylesheet content; not central to current UI.
+
+Frontend components
+- frontend/src/components/Hero.tsx
+  - Top banner/title/call-to-action.
+- frontend/src/components/UploadCard.tsx
+  - Main drag-drop upload and Analyze button.
+- frontend/src/components/CompanySearchBar.jsx
+  - Company input + analyze action.
+- frontend/src/components/AnalysisLoadingOverlay.tsx
+  - Multi-step loading overlay.
+- frontend/src/components/Button.tsx
+  - Reusable styled button component.
+- frontend/src/components/Card.tsx
+  - Reusable card component (currently unused by App.tsx).
+- frontend/src/components/UploadBox.tsx
+  - Alternate upload component (currently unused by App.tsx).
+
+Frontend utility
+- frontend/src/lib/getCompanyPDF.js
+  - Maps query to mock PDF path.
+  - Returns /mock-data/reliance.pdf, /mock-data/tata.pdf, /mock-data/adani.pdf, or null.
+  - In practice only Tata.pdf exists currently under public/mock-data.
+
+Frontend folders currently empty of files
+- frontend/src/hooks/
+- frontend/src/pages/
+- frontend/src/types/
+
+==================================================
+8) KNOWN GAPS / IMPORTANT NOTES FOR AN AI AGENT
+==================================================
+1. AI module is not integrated into active API routes.
+- backend analyze path uses backend/app/services/scoring_service.py only.
+- ai/agents and ai/claim_extraction are currently standalone.
+
+2. Schema drift / unused models exist.
+- In schemas.py, AnalyzeRequest, AnalyzeResponse, ScoredClaimItem are currently unused by active endpoints.
+
+3. Company mock-data mismatch.
+- getCompanyPDF.js can return reliance/adani/tata paths.
+- Only Tata.pdf exists in frontend/public/mock-data right now.
+- Searching Reliance/Adani will likely fail with file-not-found unless those PDFs are added.
+
+4. Frontend backend URL hardcoded.
+- App.tsx uses http://localhost:8000 directly, no env abstraction.
+
+5. CORS is fully open by default.
+- settings.py allows all origins/methods/headers (fine for local dev, risky for prod).
+
+==================================================
+9) END-TO-END EXECUTION NARRATIVE (SHORT)
+==================================================
+User action -> frontend sends PDF -> backend stores file -> backend extracts text -> backend detects candidate claims -> backend scores each claim -> JSON response -> frontend computes aggregate score/risk and displays analysis cards.
+
+==================================================
+10) RECOMMENDED NEXT INTEGRATION STEPS
+==================================================
+1. Connect ai/claim_extraction/extractor.py into backend/pdf_service pipeline.
+2. Connect ai/agents/judge_agent.py for final scoring synthesis.
+3. Add missing mock PDFs or adjust search mapping to existing files only.
+4. Move backend base URL to environment configuration in frontend.
+5. Remove unused components/models or wire them intentionally.
+
+End of analysis.

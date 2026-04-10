@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { Hero } from './components/Hero'
 import { UploadCard } from './components/UploadCard'
+import CompanySearchBar from './components/CompanySearchBar.jsx'
+import { AnalysisLoadingOverlay } from './components/AnalysisLoadingOverlay'
+import { getCompanyPDF } from './lib/getCompanyPDF.js'
 
 type ClaimResult = {
   claim: string
@@ -15,7 +18,7 @@ type AnalyzeResponse = {
 
 function App() {
   const [file, setFile] = useState<File | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
 
   async function handleAnalyze() {
@@ -24,33 +27,15 @@ function App() {
       return
     }
 
-    setLoading(true)
+    setIsLoading(true)
 
     try {
       const formData = new FormData()
       formData.append('file', file)
 
-      const uploadResponse = await fetch('http://localhost:8000/upload-pdf', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error('Upload request failed')
-      }
-
-      const uploadData: { file_path?: string } = await uploadResponse.json()
-
-      if (!uploadData.file_path) {
-        throw new Error('Missing file_path in upload response')
-      }
-
       const analyzeResponse = await fetch('http://localhost:8000/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ file_path: uploadData.file_path }),
+        body: formData,
       })
 
       if (!analyzeResponse.ok) {
@@ -63,7 +48,47 @@ function App() {
       console.error(error)
       alert('Something went wrong while analyzing the file')
     } finally {
-      setLoading(false)
+      setIsLoading(false)
+    }
+  }
+
+  async function handleCompanySearch(query: string) {
+    const filePath = getCompanyPDF(query)
+
+    if (!filePath) {
+      alert('Demo supports Tata only')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      const fileResponse = await fetch(filePath)
+      if (!fileResponse.ok) {
+        throw new Error('File not found')
+      }
+
+      const blob = await fileResponse.blob()
+      const fileName = filePath.split('/').pop() ?? 'company.pdf'
+      const formData = new FormData()
+      formData.append('file', blob, fileName)
+
+      const analyzeResponse = await fetch('http://localhost:8000/analyze', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!analyzeResponse.ok) {
+        throw new Error('Analyze request failed')
+      }
+
+      const analyzeData: AnalyzeResponse = await analyzeResponse.json()
+      setResult(analyzeData)
+    } catch (error) {
+      console.error(error)
+      alert('Demo supports Tata only')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -187,25 +212,17 @@ function App() {
           }
         />
 
+        <section className="mt-10 mb-6">
+          <CompanySearchBar handleCompanySearch={handleCompanySearch} />
+        </section>
+
         <div className="flex flex-col gap-8 pb-14">
           <UploadCard
             selectedFile={file}
             onFileSelect={onFileSelect}
             onAnalyze={handleAnalyze}
-            isAnalyzing={loading}
+            isAnalyzing={isLoading}
           />
-
-          {loading && (
-            <section className="rounded-xl border border-[#1f2937] bg-[#111827] p-6 sm:p-8">
-              <h3 className="text-center text-xl font-semibold text-[#e5e7eb] sm:text-2xl">
-                Processing
-              </h3>
-
-              <p className="mt-4 text-center text-sm text-[#9ca3af] sm:text-base">
-                Analyzing... Extracting → Verifying → Scoring
-              </p>
-            </section>
-          )}
 
           <section
             className={`space-y-5 transition-all duration-300 ${
@@ -286,6 +303,7 @@ function App() {
           </section>
         </div>
       </main>
+      <AnalysisLoadingOverlay isVisible={isLoading} />
     </div>
   )
 }

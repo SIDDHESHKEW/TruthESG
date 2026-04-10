@@ -32,13 +32,19 @@ ai/nltk_data/
 
 # Virtual environments
 .venv/
+.venv*/
 venv/
+venv*/
+backend/.venv/
+backend/.venv*/
 backend/venv/
 
 # Python build artifacts
 build/
 dist/
 *.egg-info/
+.eggs/
+pip-wheel-metadata/
 
 # Frontend dependencies
 node_modules/
@@ -50,6 +56,11 @@ frontend/.cache/
 frontend/*.tsbuildinfo
 frontend/.eslintcache
 frontend/*.local
+
+# Generic caches and local build outputs
+.cache/
+*.tmp
+*.temp
 
 # Runtime uploads
 uploads/

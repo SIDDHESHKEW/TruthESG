@@ -1,22 +1,21 @@
-from pathlib import Path
-import random
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from fastapi import APIRouter, HTTPException
-
-from app.models.schemas import AnalyzeClaimsResponse, AnalyzeRequest, FinalClaimItem
-from app.services.pdf_service import process_pdf
+from app.config.settings import settings
+from app.models.schemas import AnalyzeClaimsResponse, FinalClaimItem
+from app.services.pdf_service import process_pdf, store_pdf
+from app.services.scoring_service import score_claim
 
 router = APIRouter(tags=["analysis"])
 
 
 @router.post("/analyze", response_model=AnalyzeClaimsResponse)
-def analyze(request: AnalyzeRequest) -> AnalyzeClaimsResponse:
-    pdf_path = Path(request.file_path)
-    if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail="File path does not exist")
+async def analyze(file: UploadFile = File(...)) -> AnalyzeClaimsResponse:
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
     try:
-        claims = process_pdf(file_path=request.file_path)
+        saved_path = await store_pdf(file=file, uploads_dir=settings.uploads_dir)
+        claims = process_pdf(file_path=str(saved_path))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -26,12 +25,13 @@ def analyze(request: AnalyzeRequest) -> AnalyzeClaimsResponse:
 
     claims_output: list[FinalClaimItem] = []
     for claim in claims:
+        scored_claim = score_claim(claim)
         claims_output.append(
             FinalClaimItem(
                 claim=claim,
-                final_score=round(random.uniform(0.4, 0.6), 2),
-                final_risk="Questionable",
-                reason="Initial analysis - no external verification yet",
+                final_score=scored_claim["final_score"],
+                final_risk=scored_claim["final_risk"],
+                reason=scored_claim["reason"],
             )
         )
 

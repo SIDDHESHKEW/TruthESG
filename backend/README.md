@@ -26,7 +26,14 @@ pip install -r requirements.txt
 From the `backend` folder:
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+.venv312\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+If your terminal is not already in `backend`, run:
+
+```bash
+cd backend
+.venv312\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## API endpoints
