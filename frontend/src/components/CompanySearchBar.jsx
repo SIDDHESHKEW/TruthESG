@@ -23,7 +23,7 @@ export default function CompanySearchBar({ handleCompanySearch, className = "" }
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search company (Tata only)"
+            placeholder="Search company (e.g., Tata Steel, Reliance...)"
             className="h-full w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 outline-none"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -42,6 +42,7 @@ export default function CompanySearchBar({ handleCompanySearch, className = "" }
           Analyze Company
         </button>
       </div>
+      <p className="mt-2 px-1 text-xs text-slate-400">Try: Tata, Reliance, Adani, Infosys</p>
     </div>
   );
 }
